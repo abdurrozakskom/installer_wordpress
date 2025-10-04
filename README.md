@@ -83,10 +83,10 @@ sudo ./install_wordpress.sh
 
 
 ## 📂 Lokasi File Penting
-- WordPress : /var/www/html/wordpress
-- VirtualHost : /etc/apache2/sites-available/wordpress.conf
-- PHP-FPM Pool : /etc/php/*/fpm/pool.d/www.conf
-- MariaDB Tuning : /etc/mysql/mariadb.conf.d/99-tuning.cnf
+- **WordPress** : /var/www/html/wordpress
+- **VirtualHost** : /etc/apache2/sites-available/wordpress.conf
+- **PHP-FPM Pool** : /etc/php/*/fpm/pool.d/www.conf
+- **MariaDB Tuning** : /etc/mysql/mariadb.conf.d/99-tuning.cnf
 
 ## 🔒 Keamanan
 Disarankan setelah instalasi:
@@ -103,7 +103,7 @@ sudo systemctl status apache2
 - Jika memory kecil (<1 GB) → kurangi pm.max_children di PHP-FPM pool config.
 
 ## 👨‍💻 Author
-Abdur Rozak
+**Abdur Rozak**
 - Guru TKJ - SMKS YASMIDA Ambarawa
 
 ---
