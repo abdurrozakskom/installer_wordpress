@@ -1,6 +1,7 @@
 #!/bin/bash
 # =========================================================
-# Auto Installer WordPress on LAMP Stack
+# Auto Installer WordPress + LAMP Stack (Optimized)
+# with Apache + PHP-FPM + MariaDB Tuning
 # by Abdur Rozak, SMKS YASMIDA Ambarawa
 # GitHub: https://github.com/abdurrozakskom
 # GitHub   : https://github.com/abdurrozakskom
@@ -17,85 +18,151 @@
 # License: MIT
 # =========================================================
 
-# Warna
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${CYAN}=== Auto Installer LAMP + WordPress ===${NC}"
+echo -e "${CYAN}=== Auto Installer LAMP + WordPress (Optimized) ===${NC}"
 
-# 1. Update & Upgrade
-echo -e "${GREEN}[1/6] Update & Upgrade...${NC}"
+# --- Input Interaktif ---
+read -p "Masukkan Nama Database (default: wordpress_db): " DB_NAME
+DB_NAME=${DB_NAME:-wordpress_db}
+
+read -p "Masukkan Username Database (default: wp_user): " DB_USER
+DB_USER=${DB_USER:-wp_user}
+
+read -sp "Masukkan Password Database (default: wp_password): " DB_PASS
+DB_PASS=${DB_PASS:-wp_password}
+echo ""
+
+read -p "Masukkan Domain/ServerName (contoh: example.com, kosongkan untuk pakai IP server): " DOMAIN
+DOMAIN=${DOMAIN:-_}
+
+echo -e "${CYAN}Database: $DB_NAME | User: $DB_USER | Domain: $DOMAIN${NC}"
+
+# --- Update & Install ---
+echo -e "${GREEN}[1/7] Update system...${NC}"
 sudo apt update && sudo apt upgrade -y
 
-# 2. Install Apache
-echo -e "${GREEN}[2/6] Install Apache2...${NC}"
+echo -e "${GREEN}[2/7] Install Apache...${NC}"
 sudo apt install apache2 -y
 sudo systemctl enable apache2
 sudo systemctl start apache2
 
-# 3. Install MariaDB
-echo -e "${GREEN}[3/6] Install MariaDB...${NC}"
+echo -e "${GREEN}[3/7] Install MariaDB...${NC}"
 sudo apt install mariadb-server mariadb-client -y
 sudo systemctl enable mariadb
 sudo systemctl start mariadb
 
-# 3a. Setup Database
-DB_NAME="wordpress_db"
-DB_USER="wp_user"
-DB_PASS="wp_password"
-
+# --- Setup Database ---
 echo -e "${CYAN}Membuat Database WordPress...${NC}"
 sudo mysql -e "CREATE DATABASE ${DB_NAME};"
 sudo mysql -e "CREATE USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
 sudo mysql -e "GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';"
 sudo mysql -e "FLUSH PRIVILEGES;"
 
-# 4. Install PHP
-echo -e "${GREEN}[4/6] Install PHP & Modules...${NC}"
-sudo apt install php php-mysql php-xml php-gd php-curl php-mbstring php-xmlrpc libapache2-mod-php -y
-sudo systemctl restart apache2
+echo -e "${GREEN}[4/7] Install PHP-FPM & Modules...${NC}"
+sudo apt install php-fpm php-mysql php-xml php-gd php-curl php-mbstring php-xmlrpc unzip -y
 
-# 5. Install WordPress
-echo -e "${GREEN}[5/6] Download & Install WordPress...${NC}"
+# Enable PHP-FPM in Apache
+sudo a2enmod proxy_fcgi setenvif
+sudo a2enconf php*-fpm
+
+# Restart service
+sudo systemctl restart apache2
+sudo systemctl restart php*-fpm
+
+# --- Install WordPress ---
+echo -e "${GREEN}[5/7] Install WordPress...${NC}"
 cd /tmp
 wget https://wordpress.org/latest.tar.gz
 tar -xvzf latest.tar.gz
 sudo mv wordpress /var/www/html/
-
-# 6. Konfigurasi Permission
 sudo chown -R www-data:www-data /var/www/html/wordpress
 sudo chmod -R 755 /var/www/html/wordpress
 
-# 7. Konfigurasi Apache VirtualHost
-echo -e "${GREEN}[6/6] Konfigurasi Apache untuk WordPress...${NC}"
+# --- Apache VirtualHost ---
+echo -e "${GREEN}[6/7] Konfigurasi Apache VirtualHost...${NC}"
 VHOST="/etc/apache2/sites-available/wordpress.conf"
 
 cat <<EOF | sudo tee $VHOST
 <VirtualHost *:80>
-    ServerAdmin admin@example.com
+    ServerAdmin admin@${DOMAIN}
+    ServerName ${DOMAIN}
     DocumentRoot /var/www/html/wordpress
-    ServerName example.com
-    ServerAlias www.example.com
 
     <Directory /var/www/html/wordpress/>
         AllowOverride All
+        Require all granted
     </Directory>
+
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php-fpm.sock|fcgi://localhost/"
+    </FilesMatch>
 
     ErrorLog \${APACHE_LOG_DIR}/wordpress_error.log
     CustomLog \${APACHE_LOG_DIR}/wordpress_access.log combined
 </VirtualHost>
 EOF
 
-# Enable site & rewrite
 sudo a2ensite wordpress.conf
 sudo a2enmod rewrite
 sudo systemctl restart apache2
 
+# =========================================================
+# === TUNING BAGIAN SERVER ===
+# =========================================================
+
+echo -e "${GREEN}[7/7] Tuning Server...${NC}"
+
+# --- Ambil jumlah CPU & RAM ---
+CPU_CORES=$(nproc)
+TOTAL_RAM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+TOTAL_RAM_MB=$((TOTAL_RAM / 1024))
+
+echo -e "${CYAN}CPU: ${CPU_CORES} cores | RAM: ${TOTAL_RAM_MB} MB${NC}"
+
+# --- Tuning Apache MPM Event ---
+APACHE_MPM_CONF="/etc/apache2/mods-available/mpm_event.conf"
+sudo sed -i "s/StartServers.*/StartServers $CPU_CORES/" $APACHE_MPM_CONF
+sudo sed -i "s/MinSpareThreads.*/MinSpareThreads 25/" $APACHE_MPM_CONF
+sudo sed -i "s/MaxSpareThreads.*/MaxSpareThreads 75/" $APACHE_MPM_CONF
+sudo sed -i "s/ThreadLimit.*/ThreadLimit 64/" $APACHE_MPM_CONF
+sudo sed -i "s/ThreadsPerChild.*/ThreadsPerChild 25/" $APACHE_MPM_CONF
+sudo sed -i "s/MaxRequestWorkers.*/MaxRequestWorkers $((CPU_CORES*50))/" $APACHE_MPM_CONF
+sudo sed -i "s/MaxConnectionsPerChild.*/MaxConnectionsPerChild 1000/" $APACHE_MPM_CONF
+
+# --- Tuning PHP-FPM ---
+PHP_FPM_POOL="/etc/php/*/fpm/pool.d/www.conf"
+sudo sed -i "s/^pm = .*/pm = dynamic/" $PHP_FPM_POOL
+sudo sed -i "s/^pm.max_children.*/pm.max_children = $((TOTAL_RAM_MB / 32))/" $PHP_FPM_POOL
+sudo sed -i "s/^pm.start_servers.*/pm.start_servers = $((CPU_CORES*2))/" $PHP_FPM_POOL
+sudo sed -i "s/^pm.min_spare_servers.*/pm.min_spare_servers = $CPU_CORES/" $PHP_FPM_POOL
+sudo sed -i "s/^pm.max_spare_servers.*/pm.max_spare_servers = $((CPU_CORES*4))/" $PHP_FPM_POOL
+
+# --- Tuning MariaDB ---
+MY_CNF="/etc/mysql/mariadb.conf.d/99-tuning.cnf"
+cat <<EOF | sudo tee $MY_CNF
+[mysqld]
+innodb_buffer_pool_size = $((TOTAL_RAM_MB * 60 / 100))M
+innodb_log_file_size = 256M
+innodb_flush_method = O_DIRECT
+max_connections = $((CPU_CORES*100))
+query_cache_size = 0
+query_cache_type = 0
+tmp_table_size = 64M
+max_heap_table_size = 64M
+EOF
+
+# Restart services
+sudo systemctl restart apache2
+sudo systemctl restart php*-fpm
+sudo systemctl restart mariadb
+
 echo -e "${CYAN}==============================================${NC}"
-echo -e "${GREEN}WordPress berhasil diinstall!${NC}"
-echo -e "URL   : http://server-ip/"
+echo -e "${GREEN}WordPress berhasil diinstall & server sudah di-tuning!${NC}"
+echo -e "URL   : http://${DOMAIN}/"
 echo -e "DB    : ${DB_NAME}"
 echo -e "USER  : ${DB_USER}"
 echo -e "PASS  : ${DB_PASS}"
