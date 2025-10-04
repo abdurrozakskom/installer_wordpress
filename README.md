@@ -1,4 +1,7 @@
 # 🚀 Auto Installer WordPress + LAMP Stack (Optimized)
+<p align="center"><img src="https://tjkt.smkyasmida.sch.id/wp-content/uploads/2025/02/Logo-TJKT-2022-Sampul-Youtube-1.png" width="600"></p>
+
+---
 
 Script Bash otomatis untuk **instalasi dan konfigurasi WordPress** di atas **LAMP Stack** (Linux, Apache, MariaDB, PHP-FPM) pada **Ubuntu Server**.  
 Sudah termasuk **tuning Apache, PHP-FPM, dan MariaDB** agar performa lebih optimal sesuai spesifikasi server.
